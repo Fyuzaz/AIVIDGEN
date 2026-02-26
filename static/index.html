@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Shorts Generator | Transforme Vídeos Curtos</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="background-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+    </div>
+
+    <div class="container">
+        <header>
+            <div class="logo">
+                <span class="logo-icon">🔥</span>
+                <h1>AI Shorts <span>Generator</span></h1>
+            </div>
+            <p class="subtitle">Transforme vídeos longos em shorts virais em segundos usando IA.</p>
+        </header>
+
+        <!-- Tabs Navigation -->
+        <nav class="tabs-nav">
+            <button class="tab-btn active" data-tab="generator">🎬 Gerador</button>
+            <button class="tab-btn" data-tab="trending">🎙️ Em Alta</button>
+        </nav>
+
+        <main>
+            <!-- ========== TAB: GENERATOR ========== -->
+            <div id="tab-generator" class="tab-content active">
+                <section class="generator-box">
+                    <div class="input-group">
+                        <input type="text" id="videoUrl" placeholder="Cole o link do vídeo (YouTube, TikTok, etc...)"
+                            aria-label="URL do Vídeo">
+                        <button id="loadBtn" class="btn-secondary"
+                            title="Carregar o vídeo para selecionar trechos manualmente">
+                            <span class="btn-text">📹 Carregar</span>
+                            <div class="loader-ring hidden"></div>
+                        </button>
+                        <button id="generateBtn" class="btn-primary" title="Gerar shorts automaticamente com IA">
+                            <span class="btn-text">🤖 IA Auto</span>
+                            <div class="loader-ring hidden"></div>
+                        </button>
+                    </div>
+                    <div class="options-group">
+                        <div class="apiKey-input">
+                            <label for="apiKey">Chave API (Opcional):</label>
+                            <input type="password" id="apiKey" placeholder="Gemini/OpenAI Key">
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Video Editor Section -->
+                <section id="editorSection" class="editor-section hidden">
+                    <div class="editor-card">
+                        <div class="editor-header">
+                            <h3 id="editorTitle">📹 Editor de Vídeo</h3>
+                            <button id="editorCloseBtn" class="btn-icon" title="Fechar editor">✕</button>
+                        </div>
+                        <div id="timelineContainer" class="timeline-container"></div>
+
+                        <!-- Subtitle Style Selector -->
+                        <div class="editor-options">
+                            <div class="option-group">
+                                <label class="option-label">🎨 Estilo de Legenda</label>
+                                <div class="style-selector" id="styleSelector">
+                                    <button class="style-btn active" data-style="classico"><span
+                                            class="style-preview classic-preview">Aa</span> Clássico</button>
+                                    <button class="style-btn" data-style="neon"><span
+                                            class="style-preview neon-preview">Aa</span> Neon</button>
+                                    <button class="style-btn" data-style="caixa"><span
+                                            class="style-preview caixa-preview">Aa</span> Caixa</button>
+                                    <button class="style-btn" data-style="impacto"><span
+                                            class="style-preview impacto-preview">Aa</span> Impacto</button>
+                                    <button class="style-btn" data-style="minimalista"><span
+                                            class="style-preview mini-preview">Aa</span> Minimal</button>
+                                    <button class="style-btn" data-style="none"><span
+                                            class="style-preview none-preview">✕</span> Nenhuma</button>
+                                </div>
+                            </div>
+
+                            <div class="option-group">
+                                <label class="option-label">📹 Vídeo Overlay (Split-Screen)</label>
+                                <div class="overlay-selector">
+                                    <select id="overlaySelect" class="overlay-dropdown">
+                                        <option value="none">Nenhum overlay</option>
+                                    </select>
+                                    <label class="btn-secondary-sm upload-btn">
+                                        📤 Upload
+                                        <input type="file" id="overlayUpload" accept="video/*" hidden>
+                                    </label>
+                                </div>
+                                <p class="overlay-hint">O vídeo selecionado aparece na parte inferior do short (40%)</p>
+                            </div>
+                        </div>
+
+                        <div class="editor-actions">
+                            <button id="previewCropBtn" class="btn-secondary-sm"
+                                title="Selecionar área de crop no frame">
+                                ✂️ Selecionar Área de Crop
+                            </button>
+                            <button id="manualGenerateBtn" class="btn-primary">
+                                <span class="btn-text">🚀 Gerar Shorts dos Segmentos</span>
+                                <div class="loader-ring hidden"></div>
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Crop Selection Section -->
+                <section id="cropSection" class="crop-section hidden">
+                    <div class="crop-card">
+                        <div class="crop-header">
+                            <h3>📐 Selecione a Área do Short</h3>
+                            <p class="crop-hint">Arraste o retângulo para posicionar a área de crop 9:16</p>
+                        </div>
+                        <div id="cropContainer" class="crop-container"></div>
+                        <div class="crop-actions">
+                            <button id="cropConfirmBtn" class="btn-primary">✅ Confirmar Área</button>
+                            <button id="cropCancelBtn" class="btn-ghost">Cancelar</button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Status Section -->
+                <section id="statusSection" class="status-section hidden">
+                    <div class="status-card">
+                        <div class="status-header">
+                            <h3 id="statusTitle">Processando vídeo...</h3>
+                            <span id="jobIdDisplay">JobID: #12345</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: 0%"></div>
+                        </div>
+                        <p id="statusDescription">Estamos baixando e analisando seu vídeo. Isso pode levar alguns
+                            minutos.</p>
+                    </div>
+                </section>
+
+                <!-- Results Section -->
+                <section id="resultSection" class="result-section hidden">
+                    <h2>Seus Shorts Gerados</h2>
+                    <div id="shortsContainer" class="shorts-grid"></div>
+                </section>
+            </div>
+
+            <!-- ========== TAB: TRENDING ========== -->
+            <div id="tab-trending" class="tab-content">
+                <section class="trending-section">
+                    <div class="trending-search-bar">
+                        <input type="text" id="trendingSearch" placeholder="Buscar podcasts, cortes, entrevistas..."
+                            value="podcast em alta">
+                        <button id="trendingSearchBtn" class="btn-secondary">
+                            <span class="btn-text">🔍 Buscar</span>
+                            <div class="loader-ring hidden"></div>
+                        </button>
+                    </div>
+                    <div class="trending-chips">
+                        <button class="chip active" data-query="podcast em alta">🔥 Em Alta</button>
+                        <button class="chip" data-query="cortes podcast">✂️ Cortes</button>
+                        <button class="chip" data-query="podcast entrevista">🎤 Entrevistas</button>
+                        <button class="chip" data-query="flow podcast">🎧 Flow</button>
+                        <button class="chip" data-query="podcast humor comédia">😂 Humor</button>
+                        <button class="chip" data-query="podcast negócios">💼 Negócios</button>
+                    </div>
+                    <div id="trendingContainer" class="trending-container">
+                        <!-- TrendingBrowser renders here -->
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <footer>
+            <p>&copy; 2026 AI Shorts Generator - Made with ❤️ for Content Creators</p>
+        </footer>
+    </div>
+
+    <script src="/static/crop.js"></script>
+    <script src="/static/timeline.js"></script>
+    <script src="/static/trending.js"></script>
+    <script src="/static/script.js"></script>
+</body>
+
+</html>
