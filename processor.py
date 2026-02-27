@@ -128,10 +128,19 @@ class VideoProcessor:
             )
 
             if short_path:
+                # Export separated elements for external editing
+                elements = self.editor.export_elements(
+                    segment_path, job_id, i,
+                    segments=sub_segments,
+                    crop_x=crop_x, crop_y=crop_y,
+                    sub_style=sub_style,
+                    overlay_path=overlay_path
+                )
                 shorts.append({
                     "path": short_path,
                     "reason": seg.get("reason", ""),
-                    "transcript": ""
+                    "transcript": "",
+                    "elements_dir": elements.get("elements_dir", "")
                 })
 
         # Cleanup downloaded segments
