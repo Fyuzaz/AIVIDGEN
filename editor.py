@@ -1,6 +1,7 @@
 import os
 import subprocess
 import logging
+import shutil
 
 logger = logging.getLogger("Processor")
 
@@ -328,6 +329,131 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         logger.info(f"Short {index} rendered with overlay: {output_path}")
         return output_path
 
+    def export_elements(self, input_path: str, job_id: str, index: int,
+                         segments: list = None,
+                         crop_x: float = None, crop_y: float = None,
+                         sub_style: str = "classico",
+                         overlay_path: str = None,
+                         overlay_ratio: float = 0.4) -> dict:
+        """
+        Export separated elements for external editing tools.
+        Returns dict with paths to: raw_video, ass_subtitle, srt_subtitle, overlay_clip, elements_dir
+        """
+        elements_dir = os.path.join(self.output_dir, f"{job_id}_elements_{index}")
+        os.makedirs(elements_dir, exist_ok=True)
+
+        elements = {"elements_dir": elements_dir}
+
+        try:
+            src_w, src_h = self.get_video_dimensions(input_path)
+            out_w, out_h = 608, 1080
+            crop_w, crop_h, x, y = self._calc_crop(src_w, src_h, crop_x, crop_y)
+
+            # 1. Raw video (crop + scale, NO subtitles)
+            raw_video_path = os.path.join(elements_dir, "video_raw.mp4")
+            cmd = [
+                "ffmpeg", "-y",
+                "-i", input_path,
+                "-vf", f"crop={crop_w}:{crop_h}:{x}:{y},scale={out_w}:{out_h}:flags=lanczos",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+                "-c:a", "aac", "-b:a", "128k",
+                "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-shortest",
+                raw_video_path
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+            if result.returncode == 0:
+                elements["raw_video"] = raw_video_path
+                logger.info(f"Exported raw video: {raw_video_path}")
+            else:
+                logger.error(f"Failed to export raw video: {result.stderr[-300:]}")
+
+            # 2. Subtitle files (ASS + SRT)
+            if segments and sub_style != "none":
+                ass_path = self.generate_ass_subtitle(segments, out_w, out_h, sub_style)
+                ass_dest = os.path.join(elements_dir, "subtitles.ass")
+                shutil.copy2(ass_path, ass_dest)
+                elements["ass_subtitle"] = ass_dest
+
+                # Convert to SRT
+                srt_dest = os.path.join(elements_dir, "subtitles.srt")
+                self._ass_to_srt(segments, srt_dest, sub_style)
+                elements["srt_subtitle"] = srt_dest
+
+                # Clean temp ASS
+                if os.path.exists(ass_path):
+                    os.remove(ass_path)
+
+                logger.info(f"Exported subtitles: ASS + SRT")
+
+            # 3. Overlay clip (if used)
+            if overlay_path and os.path.exists(overlay_path):
+                overlay_h = out_h - (int(out_h * (1 - overlay_ratio)) // 2 * 2)
+                overlay_dest = os.path.join(elements_dir, "overlay.mp4")
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-i", overlay_path,
+                    "-vf", f"scale={out_w}:{overlay_h}:flags=lanczos,setsar=1",
+                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+                    "-c:a", "aac", "-b:a", "128k",
+                    "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+                    "-t", "60",  # Limit to 60s
+                    overlay_dest
+                ]
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+                if result.returncode == 0:
+                    elements["overlay_clip"] = overlay_dest
+                    logger.info(f"Exported overlay clip: {overlay_dest}")
+
+            # 4. README
+            readme_path = os.path.join(elements_dir, "README.txt")
+            with open(readme_path, "w", encoding="utf-8") as f:
+                f.write("=== AI Shorts Generator — Pacote de Edição ===\n\n")
+                f.write("Este pacote contém os elementos separados do seu short\n")
+                f.write("para edição em ferramentas externas.\n\n")
+                f.write("Arquivos incluídos:\n")
+                f.write("  - video_raw.mp4    → Vídeo croppado 9:16 SEM legendas\n")
+                if "ass_subtitle" in elements:
+                    f.write("  - subtitles.ass    → Legendas (formato ASS, estilizado)\n")
+                    f.write("  - subtitles.srt    → Legendas (formato SRT, universal)\n")
+                if "overlay_clip" in elements:
+                    f.write("  - overlay.mp4      → Vídeo overlay (parte inferior)\n")
+                f.write("\nComo usar:\n")
+                f.write("  1. Importe video_raw.mp4 no seu editor\n")
+                f.write("  2. Importe subtitles.srt ou subtitles.ass como legenda\n")
+                f.write("  3. Se tiver overlay, adicione overlay.mp4 na camada inferior\n")
+                f.write(f"\nResolução: {out_w}x{out_h} (9:16)\n")
+            elements["readme"] = readme_path
+
+            logger.info(f"Export package ready: {elements_dir}")
+            return elements
+
+        except Exception as e:
+            logger.error(f"Failed to export elements for short {index}: {e}", exc_info=True)
+            return elements
+
+    def _ass_to_srt(self, segments: list, srt_path: str, style_name: str = "classico"):
+        """Convert subtitle segments to SRT format."""
+        style = SUBTITLE_STYLES.get(style_name, SUBTITLE_STYLES["classico"])
+        with open(srt_path, "w", encoding="utf-8") as f:
+            for i, seg in enumerate(segments, 1):
+                text = seg["text"].strip()
+                if not text:
+                    continue
+                if style.get("uppercase"):
+                    text = text.upper()
+                start = self._seconds_to_srt_time(seg["start"])
+                end = self._seconds_to_srt_time(seg["end"])
+                f.write(f"{i}\n{start} --> {end}\n{text}\n\n")
+        logger.info(f"Generated SRT subtitle: {len(segments)} entries")
+
+    @staticmethod
+    def _seconds_to_srt_time(seconds: float) -> str:
+        h = int(seconds // 3600)
+        m = int((seconds % 3600) // 60)
+        s = int(seconds % 60)
+        ms = int((seconds % 1) * 1000)
+        return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
     def _fallback_render(self, input_path, output_path,
                           crop_w, crop_h, x, y, out_w, out_h):
         """Fallback: crop + scale without subtitles."""
@@ -350,3 +476,4 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         except Exception as e:
             logger.error(f"Fallback render failed: {e}")
             return ""
+

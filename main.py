@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional
 import os
@@ -294,6 +294,48 @@ async def upload_overlay_file(file: UploadFile = File(...)):
 
     logger.info(f"Overlay uploaded: {safe_name} ({len(content)} bytes)")
     return {"name": safe_name, "label": "Custom Upload", "url": f"/overlays/{safe_name}"}
+
+
+@app.get("/export-package/{job_id}/{index}")
+async def export_package(job_id: str, index: int):
+    """Downloads a ZIP with separated elements for external editing."""
+    if job_id not in jobs:
+        raise HTTPException(status_code=404, detail="Job não encontrado")
+
+    job = jobs[job_id]
+    if job["status"] != "completed":
+        raise HTTPException(status_code=400, detail="Job ainda não foi concluído")
+
+    shorts = job.get("shorts", [])
+    if index < 0 or index >= len(shorts):
+        raise HTTPException(status_code=404, detail="Short não encontrado")
+
+    short = shorts[index]
+    elements_dir = short.get("elements_dir", "")
+
+    if not elements_dir or not os.path.isdir(elements_dir):
+        raise HTTPException(status_code=404, detail="Pacote de elementos não encontrado")
+
+    import zipfile
+    import io
+
+    # Create ZIP in memory
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for root, dirs, files in os.walk(elements_dir):
+            for file in files:
+                file_path = os.path.join(root, file)
+                arcname = os.path.relpath(file_path, elements_dir)
+                zf.write(file_path, arcname)
+
+    zip_buffer.seek(0)
+    zip_filename = f"short_{index}_editing_package.zip"
+
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{zip_filename}"'}
+    )
 
 
 @app.get("/trending")
